@@ -15,10 +15,28 @@ from flask import Flask, render_template, request, jsonify, send_file, redirect,
 from werkzeug.utils import secure_filename
 import zipfile
 import shutil
+import numpy as np
 
 # プロジェクトルートを追加
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, current_dir)
+
+# SAM2のディレクトリ制約に対応するため、sam2ディレクトリに移動してインポート
+original_cwd = os.getcwd()
+sam2_dir = os.path.join(current_dir, 'sam2')
+
+def import_sam2_components():
+    """SAM2コンポーネントを安全にインポート"""
+    os.chdir(sam2_dir)
+    sys.path.insert(0, sam2_dir)
+    try:
+        from src.sam2_video_tracker import SAM2VideoTracker
+        return SAM2VideoTracker
+    finally:
+        os.chdir(original_cwd)
+
+# SAM2VideoTrackerをインポート
+SAM2VideoTracker = None
 
 from scripts.video_to_frames import video_to_frames
 
@@ -36,6 +54,49 @@ ALLOWED_VIDEO_EXTENSIONS = {'mp4', 'mov', 'avi', 'wmv', 'mkv'}
 
 # セッション管理
 processing_sessions = {}
+
+def run_complete_video_tracking_with_progress(video_dir, output_dir, objects_to_track, model_size="tiny", progress_callback=None):
+    """
+    プログレスコールバック付きの完全な動画追跡を実行
+    """
+    # 正しいディレクトリでSAM2を実行
+    original_cwd = os.getcwd()
+    sam2_dir = os.path.join(current_dir, 'sam2')
+    
+    try:
+        # sam2ディレクトリに移動
+        os.chdir(sam2_dir)
+        sys.path.insert(0, sam2_dir)
+        
+        # SAM2 componentsをインポート
+        from src.sam2_video_tracker import run_complete_video_tracking
+        
+        if progress_callback:
+            progress_callback("初期化", 10, "SAM2実行環境を準備中...")
+        
+        # 絶対パスに変換
+        video_dir = os.path.abspath(video_dir)
+        output_dir = os.path.abspath(output_dir)
+        
+        if progress_callback:
+            progress_callback("実行", 20, "SAM2による物体追跡を開始...")
+        
+        # SAM2追跡を実行
+        analysis = run_complete_video_tracking(
+            video_dir=video_dir,
+            output_dir=output_dir,
+            objects_to_track=objects_to_track,
+            model_size=model_size
+        )
+        
+        if progress_callback:
+            progress_callback("完了", 100, "SAM2追跡が完了しました")
+        
+        return analysis
+        
+    finally:
+        # 元のディレクトリに戻す
+        os.chdir(original_cwd)
 
 def allowed_file(filename, allowed_extensions):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_extensions
@@ -233,38 +294,42 @@ def start_tracking(session_id):
             session.message = "SAM2による物体追跡を開始..."
             session.progress = 10
             
-            # SAM2追跡を実行（簡略化版）
-            # 注意: 実際のSAM2実行は sam2ディレクトリで行う必要がある
-            session.progress = 30
-            session.message = "SAM2モデルを読み込み中..."
-            
-            time.sleep(2)  # デモ用の待機
-            
-            session.progress = 50
-            session.message = "物体検出を実行中..."
-            
-            time.sleep(3)  # デモ用の待機
-            
-            session.progress = 80
-            session.message = "全フレームに追跡を伝播中..."
-            
-            time.sleep(5)  # デモ用の待機
-            
             # 結果ディレクトリを作成
             result_dir = os.path.join('web_results', session_id, 'tracked')
             os.makedirs(result_dir, exist_ok=True)
             session.result_dir = result_dir
             
-            # デモ用の結果データ
-            session.tracking_results = {
-                'total_frames': session.frame_count,
-                'processed_frames': session.frame_count,
-                'model_size': model_size,
-                'processing_time': '0:05:30.123456',
-                'objects_detected': {'0': session.frame_count - 10},
-                'demo_mode': True
-            }
+            session.progress = 20
+            session.message = "SAM2モデルを読み込み中..."
             
+            # 追跡対象オブジェクトを作成
+            objects_to_track = []
+            for i, point in enumerate(session.selected_points):
+                objects_to_track.append({
+                    "frame": 0,  # 最初のフレーム
+                    "id": i,    # オブジェクトID
+                    "points": [[point['x'], point['y']]],  # 座標
+                    "labels": [1]  # Positive
+                })
+            
+            session.progress = 30
+            session.message = f"{len(objects_to_track)}個のオブジェクトを追跡中..."
+            
+            # プログレス更新用のコールバック関数を作成
+            def update_progress(stage, progress, message):
+                session.progress = min(30 + int(progress * 0.65), 95)  # 30-95%の範囲
+                session.message = f"{stage}: {message}"
+            
+            # 実際のSAM2追跡を実行
+            analysis = run_complete_video_tracking_with_progress(
+                video_dir=session.frames_dir,
+                output_dir=result_dir,
+                objects_to_track=objects_to_track,
+                model_size=model_size,
+                progress_callback=update_progress
+            )
+            
+            session.tracking_results = analysis
             session.progress = 100
             session.status = "completed"
             session.message = "追跡完了！"
@@ -273,6 +338,9 @@ def start_tracking(session_id):
             session.status = "error"
             session.error = str(e)
             session.message = f"エラー: {e}"
+            print(f"SAM2追跡エラー: {e}")
+            import traceback
+            traceback.print_exc()
     
     # バックグラウンドで処理を実行
     thread = threading.Thread(target=process_tracking)
@@ -314,11 +382,19 @@ def download_results(session_id):
     zip_path = os.path.join('web_results', f"{session_id}_results.zip")
     
     with zipfile.ZipFile(zip_path, 'w') as zip_file:
-        # 元フレームを追加
-        for frame_name in session.frame_list[:10]:  # デモ用に最初の10フレームのみ
+        # 元フレームを追加（最初の20フレームのみ）
+        for frame_name in session.frame_list[:20]:
             frame_path = os.path.join(session.frames_dir, frame_name)
             if os.path.exists(frame_path):
                 zip_file.write(frame_path, f"frames/{frame_name}")
+        
+        # 追跡結果フレームを追加
+        if session.result_dir and os.path.exists(session.result_dir):
+            for root, dirs, files in os.walk(session.result_dir):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, session.result_dir)
+                    zip_file.write(file_path, f"tracked_results/{arcname}")
         
         # 結果データを追加
         if session.tracking_results:
@@ -333,12 +409,15 @@ def download_results(session_id):
 処理日時: {session.created_at.strftime('%Y-%m-%d %H:%M:%S')}
 フレーム数: {session.frame_count}
 選択座標: {session.selected_points}
+モデルサイズ: {session.tracking_results.get('model_size', 'N/A') if session.tracking_results else 'N/A'}
 
 結果:
-{json.dumps(session.tracking_results, indent=2, ensure_ascii=False)}
+{json.dumps(session.tracking_results, indent=2, ensure_ascii=False) if session.tracking_results else 'エラーが発生しました'}
 
-注意: これはデモ版の結果です。
-完全な追跟結果を得るには、sam2ディレクトリ内でCLIアプリを実行してください。
+使用方法:
+1. frames/ - 元の動画フレーム（一部のみ含まれています）
+2. tracked_results/ - SAM2による追跡結果フレーム
+3. analysis_result.json - 詳細な解析結果データ
 """
         zip_file.writestr("README.txt", readme_content)
     

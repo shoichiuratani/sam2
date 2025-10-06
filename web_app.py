@@ -81,13 +81,80 @@ def run_complete_video_tracking_with_progress(video_dir, output_dir, objects_to_
         if progress_callback:
             progress_callback("実行", 20, "SAM2による物体追跡を開始...")
         
-        # SAM2追跡を実行
-        analysis = run_complete_video_tracking(
+        # SAM2のパスを修正してから実行
+        # SAM2VideoTrackerクラスを直接使用してパス問題を回避
+        import datetime
+        start_time = datetime.datetime.now()
+        
+        from src.sam2_video_tracker import SAM2VideoTracker
+        
+        # トラッカーを初期化（sam2ディレクトリ内で実行）
+        tracker = SAM2VideoTracker(model_size=model_size, device="cpu")
+        
+        if progress_callback:
+            progress_callback("初期化", 30, "動画フレームを初期化中...")
+        
+        # 動画を初期化
+        frame_names = tracker.initialize_video(video_dir)
+        
+        if progress_callback:
+            progress_callback("物体追加", 40, "追跡対象オブジェクトを設定中...")
+        
+        # 追跡対象オブジェクトを追加
+        initial_points = None
+        initial_labels = None
+        
+        for obj_config in objects_to_track:
+            frame_idx = obj_config["frame"]
+            obj_id = obj_config["id"]
+            
+            if "points" in obj_config:
+                points = obj_config["points"]
+                labels = obj_config["labels"]
+                tracker.add_object_points(frame_idx, obj_id, points, labels)
+                
+                # 最初のオブジェクトの座標を保存（表示用）
+                if initial_points is None:
+                    initial_points = np.array(points, dtype=np.float32)
+                    initial_labels = np.array(labels, dtype=np.int32)
+        
+        if progress_callback:
+            progress_callback("追跡", 60, "動画全体に追跡を伝播中...")
+        
+        # 動画全体に追跡を伝播
+        video_segments = tracker.propagate_in_video()
+        
+        if progress_callback:
+            progress_callback("保存", 80, "結果を保存中...")
+        
+        # 結果を保存
+        tracker.save_results(
             video_dir=video_dir,
+            frame_names=frame_names,
+            video_segments=video_segments,
             output_dir=output_dir,
-            objects_to_track=objects_to_track,
-            model_size=model_size
+            show_initial_points=initial_points,
+            show_initial_labels=initial_labels
         )
+        
+        if progress_callback:
+            progress_callback("分析", 90, "結果を分析中...")
+        
+        # 結果を分析
+        analysis = tracker.analyze_results(video_segments, frame_names)
+        
+        # 処理時間計算
+        end_time = datetime.datetime.now()
+        processing_time = end_time - start_time
+        
+        # 分析結果を保存
+        analysis["processing_time"] = str(processing_time)
+        analysis["model_size"] = model_size
+        analysis["frames_per_second"] = len(frame_names) / processing_time.total_seconds()
+        
+        analysis_file = os.path.join(output_dir, "analysis_result.json")
+        with open(analysis_file, 'w', encoding='utf-8') as f:
+            json.dump(analysis, f, indent=2, ensure_ascii=False)
         
         if progress_callback:
             progress_callback("完了", 100, "SAM2追跡が完了しました")
@@ -168,8 +235,15 @@ def extract_frames(session_id):
     
     session = processing_sessions[session_id]
     
-    if session.status != "uploaded":
-        return jsonify({'error': 'まず動画をアップロードしてください'}), 400
+    if session.status not in ["uploaded", "extracting"]:
+        if session.status == "frames_ready":
+            return jsonify({'message': 'フレーム分割は既に完了しています'}), 200
+        else:
+            return jsonify({'error': f'現在の状態({session.status})ではフレーム分割を実行できません'}), 400
+    
+    # 既に処理中の場合は重複実行を防ぐ
+    if session.status == "extracting":
+        return jsonify({'message': 'フレーム分割が既に実行中です'}), 200
     
     def process_frames():
         try:
@@ -304,13 +378,33 @@ def start_tracking(session_id):
             
             # 追跡対象オブジェクトを作成
             objects_to_track = []
-            for i, point in enumerate(session.selected_points):
-                objects_to_track.append({
-                    "frame": 0,  # 最初のフレーム
-                    "id": i,    # オブジェクトID
-                    "points": [[point['x'], point['y']]],  # 座標
-                    "labels": [1]  # Positive
-                })
+            print(f"Debug - selected_points type: {type(session.selected_points)}")
+            print(f"Debug - selected_points content: {session.selected_points}")
+            
+            # 座標データの正しい形式を取得
+            if isinstance(session.selected_points, dict) and 'coords' in session.selected_points:
+                coords = session.selected_points['coords']
+                labels = session.selected_points.get('labels', [1] * len(coords))
+                
+                for i, coord in enumerate(coords):
+                    objects_to_track.append({
+                        "frame": 0,  # 最初のフレーム
+                        "id": i,    # オブジェクトID
+                        "points": [coord],  # 座標 [x, y]
+                        "labels": [labels[i] if i < len(labels) else 1]  # ラベル
+                    })
+            else:
+                # 旧形式への対応
+                for i, point in enumerate(session.selected_points):
+                    if isinstance(point, dict) and 'x' in point and 'y' in point:
+                        objects_to_track.append({
+                            "frame": 0,  # 最初のフレーム
+                            "id": i,    # オブジェクトID
+                            "points": [[float(point['x']), float(point['y'])]],  # 座標
+                            "labels": [1]  # Positive
+                        })
+            
+            print(f"Debug - objects_to_track: {objects_to_track}")
             
             session.progress = 30
             session.message = f"{len(objects_to_track)}個のオブジェクトを追跡中..."
@@ -447,5 +541,5 @@ def cleanup_session(session_id):
 
 if __name__ == '__main__':
     print("SAM2 動画追跡 Webアプリケーションを開始...")
-    print("ブラウザで http://localhost:5000 にアクセスしてください")
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    print("ブラウザで http://localhost:5001 にアクセスしてください")
+    app.run(host='0.0.0.0', port=5001, debug=True)

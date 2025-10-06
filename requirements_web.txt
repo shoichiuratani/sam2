@@ -1,0 +1,20 @@
+# SAM2 動画追跡 Webアプリ用 requirements
+# 基本Webフレームワーク
+flask>=3.1.0
+werkzeug>=3.1.0
+
+# 既存の依存関係（CLIアプリ用）
+torch>=2.1.0
+torchvision>=0.16.0
+numpy>=1.24.0
+Pillow>=9.4.0
+matplotlib>=3.6.0
+opencv-python>=4.8.0
+tqdm>=4.64.0
+hydra-core>=1.3.0
+iopath>=0.1.9
+pycocotools>=2.0.6
+
+# その他ユーティリティ
+python-magic-bin>=0.4.14  # ファイル形式検出用
+gunicorn>=21.2.0          # プロダクション用WSGIサーバー

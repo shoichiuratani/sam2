@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAM2 動画内物体検出・追跡</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- ヘッダー -->
+        <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+            <div class="container">
+                <span class="navbar-brand">
+                    <i class="fas fa-video me-2"></i>
+                    SAM2 動画内物体検出・追跡
+                </span>
+                <small class="text-light">Meta SAM2による高精度物体追跡</small>
+            </div>
+        </nav>
+
+        <!-- メインコンテンツ -->
+        <div class="container">
+            <!-- ステップインジケーター -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="progress-steps">
+                        <div class="step active" id="step-1">
+                            <div class="step-number">1</div>
+                            <div class="step-title">動画アップロード</div>
+                        </div>
+                        <div class="step" id="step-2">
+                            <div class="step-number">2</div>
+                            <div class="step-title">フレーム分割</div>
+                        </div>
+                        <div class="step" id="step-3">
+                            <div class="step-number">3</div>
+                            <div class="step-title">座標選択</div>
+                        </div>
+                        <div class="step" id="step-4">
+                            <div class="step-number">4</div>
+                            <div class="step-title">追跡実行</div>
+                        </div>
+                        <div class="step" id="step-5">
+                            <div class="step-number">5</div>
+                            <div class="step-title">結果確認</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ステップ1: 動画アップロード -->
+            <div class="step-content" id="upload-section">
+                <div class="card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-upload me-2"></i>ステップ1: 動画ファイルのアップロード</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="upload-area" id="upload-area">
+                            <div class="upload-content">
+                                <i class="fas fa-cloud-upload-alt fa-3x mb-3"></i>
+                                <h5>動画ファイルをドラッグ&ドロップ</h5>
+                                <p class="text-muted">または</p>
+                                <button class="btn btn-primary" id="select-file-btn">
+                                    <i class="fas fa-folder-open me-2"></i>ファイルを選択
+                                </button>
+                                <input type="file" id="video-file" accept="video/*" style="display: none;">
+                                <div class="mt-3">
+                                    <small class="text-muted">
+                                        対応形式: MP4, MOV, AVI, WMV, MKV (最大100MB)
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="upload-progress mt-3" id="upload-progress" style="display: none;">
+                            <div class="progress">
+                                <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <div class="text-center mt-2">
+                                <span id="upload-status">アップロード中...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ステップ2: フレーム分割 -->
+            <div class="step-content" id="frames-section" style="display: none;">
+                <div class="card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-film me-2"></i>ステップ2: フレーム分割</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="text-center">
+                            <button class="btn btn-success btn-lg" id="extract-frames-btn">
+                                <i class="fas fa-cog fa-spin me-2" style="display: none;"></i>
+                                <i class="fas fa-scissors me-2"></i>
+                                フレーム分割を開始
+                            </button>
+                        </div>
+                        
+                        <div class="processing-progress mt-4" id="frame-progress" style="display: none;">
+                            <div class="progress">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                     role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <div class="text-center mt-2">
+                                <span id="frame-status">フレーム分割中...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ステップ3: フレームプレビューと座標選択 -->
+            <div class="step-content" id="preview-section" style="display: none;">
+                <div class="card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-mouse-pointer me-2"></i>ステップ3: 追跡対象の座標選択</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="frame-preview">
+                                    <canvas id="frame-canvas" width="800" height="600"></canvas>
+                                    <div class="canvas-controls mt-2">
+                                        <button class="btn btn-outline-success btn-sm" id="add-positive-btn">
+                                            <i class="fas fa-plus me-1"></i>追跡対象 (緑)
+                                        </button>
+                                        <button class="btn btn-outline-danger btn-sm" id="add-negative-btn">
+                                            <i class="fas fa-minus me-1"></i>除外領域 (赤)
+                                        </button>
+                                        <button class="btn btn-outline-secondary btn-sm" id="clear-points-btn">
+                                            <i class="fas fa-eraser me-1"></i>クリア
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="preview-info">
+                                    <h5>フレーム情報</h5>
+                                    <ul class="list-group list-group-flush">
+                                        <li class="list-group-item d-flex justify-content-between">
+                                            <span>総フレーム数</span>
+                                            <span id="total-frames">-</span>
+                                        </li>
+                                        <li class="list-group-item d-flex justify-content-between">
+                                            <span>現在のフレーム</span>
+                                            <span id="current-frame">1</span>
+                                        </li>
+                                    </ul>
+                                    
+                                    <h5 class="mt-3">選択された座標</h5>
+                                    <div id="selected-points" class="selected-points">
+                                        <p class="text-muted">座標を選択してください</p>
+                                    </div>
+                                    
+                                    <div class="mt-3">
+                                        <button class="btn btn-primary w-100" id="confirm-points-btn" disabled>
+                                            <i class="fas fa-check me-2"></i>座標確定
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ステップ4: 追跡実行 -->
+            <div class="step-content" id="tracking-section" style="display: none;">
+                <div class="card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-crosshairs me-2"></i>ステップ4: SAM2追跡実行</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h5>モデル設定</h5>
+                                <div class="mb-3">
+                                    <label class="form-label">SAM2モデルサイズ</label>
+                                    <select class="form-select" id="model-size">
+                                        <option value="tiny" selected>Tiny (高速・149MB)</option>
+                                        <option value="small">Small (標準)</option>
+                                        <option value="base_plus">Base+ (高精度)</option>
+                                        <option value="large">Large (最高精度・低速)</option>
+                                    </select>
+                                    <div class="form-text">
+                                        Tinyモデル推奨: CPU環境で約3.8秒/フレーム
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <h5>選択座標確認</h5>
+                                <div id="tracking-points-summary"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="text-center mt-4">
+                            <button class="btn btn-success btn-lg" id="start-tracking-btn">
+                                <i class="fas fa-play me-2"></i>
+                                SAM2追跡を開始
+                            </button>
+                        </div>
+                        
+                        <div class="tracking-progress mt-4" id="tracking-progress" style="display: none;">
+                            <div class="progress">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                     role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <div class="text-center mt-2">
+                                <span id="tracking-status">SAM2追跡中...</span>
+                            </div>
+                            <div class="mt-3 text-center">
+                                <small class="text-muted">
+                                    処理時間: 数分〜数十分（フレーム数とモデルサイズに依存）
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ステップ5: 結果確認 -->
+            <div class="step-content" id="results-section" style="display: none;">
+                <div class="card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-chart-line me-2"></i>ステップ5: 追跡結果</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="results-summary" id="results-summary">
+                            <!-- 結果サマリーがここに表示される -->
+                        </div>
+                        
+                        <div class="row mt-4">
+                            <div class="col-md-6">
+                                <button class="btn btn-primary w-100" id="download-results-btn">
+                                    <i class="fas fa-download me-2"></i>
+                                    結果をダウンロード (ZIP)
+                                </button>
+                            </div>
+                            <div class="col-md-6">
+                                <button class="btn btn-outline-secondary w-100" id="new-session-btn">
+                                    <i class="fas fa-plus me-2"></i>
+                                    新しいセッションを開始
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 全般的なステータス表示 -->
+            <div class="alert alert-info mt-4" id="status-alert" style="display: none;">
+                <div class="d-flex align-items-center">
+                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                    <span id="status-message">処理中...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- フッター -->
+    <footer class="footer mt-5 py-4 bg-light">
+        <div class="container text-center">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>SAM2 動画内物体検出・追跡</h6>
+                    <p class="text-muted mb-0">
+                        Based on @Neckoh's article &amp; Meta SAM2
+                    </p>
+                </div>
+                <div class="col-md-6">
+                    <h6>使用方法</h6>
+                    <small class="text-muted">
+                        1. 動画アップロード → 2. フレーム分割 → 3. 座標選択 → 4. 追跡実行 → 5. 結果確認
+                    </small>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

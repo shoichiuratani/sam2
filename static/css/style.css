@@ -1,0 +1,449 @@
+/* SAM2 動画追跡 Webアプリ スタイル */
+
+/* 全体的なスタイル */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa;
+    min-height: 100vh;
+}
+
+/* プログレスステップ */
+.progress-steps {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 2rem 0;
+    position: relative;
+}
+
+.progress-steps::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background-color: #dee2e6;
+    z-index: 1;
+}
+
+.step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background-color: white;
+    padding: 0.5rem;
+    border-radius: 50%;
+    z-index: 2;
+    position: relative;
+}
+
+.step-number {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: #dee2e6;
+    color: #6c757d;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    transition: all 0.3s ease;
+}
+
+.step-title {
+    margin-top: 0.5rem;
+    font-size: 0.875rem;
+    color: #6c757d;
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+.step.active .step-number {
+    background-color: #0d6efd;
+    color: white;
+}
+
+.step.active .step-title {
+    color: #0d6efd;
+    font-weight: 600;
+}
+
+.step.completed .step-number {
+    background-color: #198754;
+    color: white;
+}
+
+.step.completed .step-title {
+    color: #198754;
+}
+
+/* アップロードエリア */
+.upload-area {
+    border: 3px dashed #dee2e6;
+    border-radius: 10px;
+    padding: 3rem 2rem;
+    text-align: center;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.upload-area:hover,
+.upload-area.dragover {
+    border-color: #0d6efd;
+    background-color: rgba(13, 110, 253, 0.05);
+}
+
+.upload-content i {
+    color: #6c757d;
+    transition: all 0.3s ease;
+}
+
+.upload-area:hover .upload-content i,
+.upload-area.dragover .upload-content i {
+    color: #0d6efd;
+    transform: scale(1.1);
+}
+
+/* フレームプレビュー */
+.frame-preview {
+    text-align: center;
+    border: 1px solid #dee2e6;
+    border-radius: 10px;
+    padding: 1rem;
+    background-color: white;
+}
+
+#frame-canvas {
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    cursor: crosshair;
+    max-width: 100%;
+    height: auto;
+}
+
+.canvas-controls {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+/* 選択された座標 */
+.selected-points {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    padding: 0.5rem;
+    background-color: white;
+}
+
+.point-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.25rem 0.5rem;
+    border-radius: 3px;
+    margin-bottom: 0.25rem;
+}
+
+.point-item.positive {
+    background-color: rgba(25, 135, 84, 0.1);
+    border-left: 3px solid #198754;
+}
+
+.point-item.negative {
+    background-color: rgba(220, 53, 69, 0.1);
+    border-left: 3px solid #dc3545;
+}
+
+.point-coords {
+    font-family: 'Courier New', monospace;
+    font-size: 0.875rem;
+}
+
+.point-remove {
+    color: #6c757d;
+    cursor: pointer;
+    transition: color 0.2s ease;
+}
+
+.point-remove:hover {
+    color: #dc3545;
+}
+
+/* プログレスバー */
+.progress {
+    height: 8px;
+    border-radius: 10px;
+}
+
+.progress-bar {
+    border-radius: 10px;
+    transition: width 0.3s ease;
+}
+
+/* 結果サマリー */
+.results-summary {
+    background-color: white;
+    border-radius: 10px;
+    padding: 1.5rem;
+    border: 1px solid #dee2e6;
+}
+
+.result-stat {
+    text-align: center;
+    padding: 1rem;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+.result-stat h4 {
+    color: #0d6efd;
+    margin-bottom: 0.5rem;
+}
+
+.result-stat p {
+    margin-bottom: 0;
+    color: #6c757d;
+}
+
+/* カード */
+.card {
+    border: none;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    border-radius: 10px;
+}
+
+.card-header {
+    background-color: white;
+    border-bottom: 1px solid #dee2e6;
+    border-radius: 10px 10px 0 0 !important;
+    padding: 1.5rem;
+}
+
+.card-header h3 {
+    margin-bottom: 0;
+    color: #495057;
+}
+
+/* ボタン */
+.btn {
+    border-radius: 8px;
+    padding: 0.625rem 1.25rem;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.btn-lg {
+    padding: 0.875rem 2rem;
+    font-size: 1.1rem;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%);
+    border: none;
+    box-shadow: 0 2px 10px rgba(13, 110, 253, 0.2);
+}
+
+.btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(13, 110, 253, 0.3);
+}
+
+.btn-success {
+    background: linear-gradient(135deg, #198754 0%, #157347 100%);
+    border: none;
+    box-shadow: 0 2px 10px rgba(25, 135, 84, 0.2);
+}
+
+.btn-success:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(25, 135, 84, 0.3);
+}
+
+/* アラート */
+.alert {
+    border: none;
+    border-radius: 10px;
+    padding: 1rem 1.5rem;
+}
+
+/* フッター */
+.footer {
+    border-top: 1px solid #dee2e6;
+    margin-top: auto;
+}
+
+/* レスポンシブデザイン */
+@media (max-width: 768px) {
+    .progress-steps {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .progress-steps::before {
+        display: none;
+    }
+    
+    .step {
+        flex-direction: row;
+        gap: 0.5rem;
+    }
+    
+    .step-title {
+        margin-top: 0;
+    }
+    
+    .upload-area {
+        padding: 2rem 1rem;
+    }
+    
+    .canvas-controls {
+        flex-direction: column;
+    }
+    
+    .canvas-controls .btn {
+        width: 100%;
+    }
+}
+
+/* アニメーション */
+.fade-in {
+    animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.pulse {
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* ローディングスピナー */
+.spinner-border-sm {
+    width: 1rem;
+    height: 1rem;
+}
+
+/* ツールチップ */
+.tooltip {
+    font-size: 0.875rem;
+}
+
+/* ドラッグ&ドロップスタイル */
+.drag-over {
+    border-color: #0d6efd !important;
+    background-color: rgba(13, 110, 253, 0.1) !important;
+}
+
+/* 座標点の視覚的表示 */
+.coordinate-marker {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid white;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.coordinate-marker.positive {
+    background-color: #198754;
+}
+
+.coordinate-marker.negative {
+    background-color: #dc3545;
+}
+
+.coordinate-marker:hover {
+    transform: scale(1.2);
+}
+
+/* ステップコンテンツの切り替え */
+.step-content {
+    transition: all 0.3s ease;
+}
+
+.step-content.active {
+    display: block !important;
+}
+
+/* プレビュー情報パネル */
+.preview-info {
+    background-color: white;
+    border-radius: 10px;
+    padding: 1.5rem;
+    border: 1px solid #dee2e6;
+    height: fit-content;
+}
+
+.preview-info h5 {
+    color: #495057;
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+
+/* リスト項目 */
+.list-group-item {
+    border: none;
+    padding: 0.5rem 0;
+    background-color: transparent;
+}
+
+/* 成功・エラー状態 */
+.success-state {
+    color: #198754;
+}
+
+.error-state {
+    color: #dc3545;
+}
+
+/* カスタムセレクト */
+.form-select {
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+    padding: 0.625rem 1rem;
+}
+
+.form-select:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+/* テキスト */
+.text-primary {
+    color: #0d6efd !important;
+}
+
+.text-success {
+    color: #198754 !important;
+}
+
+.text-danger {
+    color: #dc3545 !important;
+}
